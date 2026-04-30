@@ -197,7 +197,7 @@
                         <input type="text" id="reminderCustomName" placeholder="Nama Pengingat" class="input-field hidden">
                         <input type="date" id="reminderStartDate" class="input-field">
                         <div><label class="text-xs text-gray-600">Pengingat:</label><div class="flex gap-3 mt-1"><label><input type="checkbox" id="reminderH7" checked> H-7</label><label><input type="checkbox" id="reminderH3" checked> H-3</label><label><input type="checkbox" id="reminderH1" checked> H-1</label><label><input type="checkbox" id="reminderH0" checked> H-0</label></div></div>
-                        <button onclick="tambahKeGoogleCalendar()" class="btn-success"><i class="fab fa-google mr-1"></i>Buka Google Calendar</button>
+                        <button onclick="exportICSPrivate()" class="btn-success"><i class="fab fa-google mr-1"></i>Tambah ke Google Calendar</button>
                     </div>
                 </div>
                 <div id="reminderList" class="space-y-2"></div>
@@ -508,49 +508,129 @@
             showAlert('PDF berhasil diunduh', 'success');
         };
         
-        // Google Calendar Reminder - dengan H-3
-		window.tambahKeGoogleCalendar = function() {
-			let vid = document.getElementById('reminderVehicle').value;
-			if(!vid) { showAlert('Pilih kendaraan', 'warning'); return; }
-			let v = vehicles.find(v => v.id == vid);
-			let typeSel = document.getElementById('reminderType');
-			let title = (typeSel.value === 'custom') ? document.getElementById('reminderCustomName').value : typeSel.options[typeSel.selectedIndex].text;
-			if(typeSel.value === 'custom' && !title) { showAlert('Isi nama pengingat', 'warning'); return; }
-			let date = document.getElementById('reminderStartDate').value;
-			if(!date) { showAlert('Pilih tanggal', 'warning'); return; }
-			let desc = `Kendaraan: ${v.name} (${v.plate})\nJenis: ${title}\nAKHIRA`;
-			
-			// Tambahkan reminder ke Google Calendar URL
-			let remindersList = [];
-			if(document.getElementById('reminderH7').checked) remindersList.push(7);
-			if(document.getElementById('reminderH3').checked) remindersList.push(3);  // H-3 ditambahkan
-			if(document.getElementById('reminderH1').checked) remindersList.push(1);
-			if(document.getElementById('reminderH0').checked) remindersList.push(0);
-			
-			let reminderParam = '';
-			if(remindersList.length > 0) {
-				reminderParam = '&reminder=' + remindersList.map(d => `${d}`).join(',');
-			}
-			
-			let calUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${date.replace(/-/g,'')}/${date.replace(/-/g,'')}&details=${encodeURIComponent(desc)}${reminderParam}`;
-			window.open(calUrl, '_blank');
-			
-			// Simpan ke localStorage dengan H-3
-			let newReminder = { 
-				id: Date.now(), 
-				vehicle_id: parseInt(vid), 
-				type: typeSel.value, 
-				typeLabel: title, 
-				startDate: date,
-				h7: document.getElementById('reminderH7').checked,
-				h3: document.getElementById('reminderH3').checked,  // H-3 ditambahkan
-				h1: document.getElementById('reminderH1').checked,
-				h0: document.getElementById('reminderH0').checked
-			};
-			reminders.push(newReminder);
-			localStorage.setItem('reminders', JSON.stringify(reminders));
-			renderReminderList();
-			showAlert('Event dibuka di Google Calendar', 'success');
+        window.exportICSPrivate = function () {
+		  let vid = document.getElementById('reminderVehicle').value;
+		  if (!vid) { showAlert('Pilih kendaraan', 'warning'); return; }
+
+		  let v = vehicles.find(v => v.id == vid);
+
+		  let typeSel = document.getElementById('reminderType');
+		  let title = (typeSel.value === 'custom')
+			? document.getElementById('reminderCustomName').value
+			: typeSel.options[typeSel.selectedIndex].text;
+
+		  if (typeSel.value === 'custom' && !title) {
+			showAlert('Isi nama pengingat', 'warning');
+			return;
+		  }
+
+		  let date = document.getElementById('reminderStartDate').value;
+		  if (!date) { showAlert('Pilih tanggal', 'warning'); return; }
+
+		  // ===============================
+		  // FORMAT WAKTU (UTC → WIB aman)
+		  // ===============================
+		  let start = date.replace(/-/g, '') + 'T020000Z'; // 09:00 WIB
+		  let end = date.replace(/-/g, '') + 'T030000Z';
+
+		  // ===============================
+		  // UID & TIMESTAMP
+		  // ===============================
+		  let uid = Date.now() + "@akhira.app";
+		  let dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+		  // ===============================
+		  // RECURRENCE
+		  // ===============================
+		  let rrule = '';
+		  let recurrenceLabel = '';
+
+		  switch (typeSel.value) {
+			case 'ganti_oli':
+			  rrule = 'FREQ=MONTHLY;INTERVAL=1';
+			  recurrenceLabel = 'Setiap 1 bulan';
+			  break;
+			case 'service_rutin':
+			  rrule = 'FREQ=MONTHLY;INTERVAL=3';
+			  recurrenceLabel = 'Setiap 3 bulan';
+			  break;
+			case 'pajak_tahunan':
+			  rrule = 'FREQ=YEARLY;INTERVAL=1';
+			  recurrenceLabel = 'Setiap 1 tahun';
+			  break;
+			case 'pajak_5_tahun':
+			  rrule = 'FREQ=YEARLY;INTERVAL=5';
+			  recurrenceLabel = 'Setiap 5 tahun';
+			  break;
+			default:
+			  recurrenceLabel = 'Tidak berulang';
+		  }
+
+		  // ===============================
+		  // REMINDER (VALARM)
+		  // ===============================
+		  let alarms = '';
+		  const addAlarm = (trigger, label) => {
+			alarms += `BEGIN:VALARM
+		TRIGGER:${trigger}
+		ACTION:DISPLAY
+		DESCRIPTION:${label}
+		END:VALARM
+		`;
+		  };
+
+		  if (document.getElementById('reminderH7').checked) addAlarm('-P7D', 'H-7');
+		  if (document.getElementById('reminderH3').checked) addAlarm('-P3D', 'H-3');
+		  if (document.getElementById('reminderH1').checked) addAlarm('-P1D', 'H-1');
+		  if (document.getElementById('reminderH0').checked) addAlarm('-PT0M', 'H-0');
+
+		  // ===============================
+		  // ESCAPE TEXT (ANTI ERROR)
+		  // ===============================
+		  const escapeText = (text) =>
+			text.replace(/\\/g, '\\\\')
+				.replace(/\n/g, '\\n')
+				.replace(/,/g, '\\,')
+				.replace(/;/g, '\\;');
+
+		  let description = escapeText(
+			`Kendaraan: ${v.name} (${v.plate})
+		Jenis: ${title}
+		Pengulangan: ${recurrenceLabel}`
+		  );
+
+		  // ===============================
+		  // ICS FINAL
+		  // ===============================
+		  let ics =
+		`BEGIN:VCALENDAR
+		VERSION:2.0
+		CALSCALE:GREGORIAN
+		BEGIN:VEVENT
+		UID:${uid}
+		DTSTAMP:${dtstamp}
+		SUMMARY:${escapeText(title + ' - ' + v.name)}
+		DESCRIPTION:${description}
+		DTSTART:${start}
+		DTEND:${end}
+		${rrule ? `RRULE:${rrule}` : ''}
+		${alarms}END:VEVENT
+		END:VCALENDAR`;
+
+		  let blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+		  let url = URL.createObjectURL(blob);
+
+		  // ===============================
+		  // UX: ALERT DULU BARU BUKA
+		  // ===============================
+		  showAlert('Membuka kalender... Pilih aplikasi lalu klik Simpan', 'info');
+
+		  setTimeout(() => {
+			window.location.href = url;
+		  }, 250);
+
+		  // cleanup
+		  setTimeout(() => URL.revokeObjectURL(url), 5000);
 		};
 
 		function renderReminderDropdown() {
@@ -560,34 +640,207 @@
 
 		function renderReminderList() {
 			let list = document.getElementById('reminderList');
-			if(reminders.length === 0) { list.innerHTML = '<p class="text-center text-gray-400 py-4">Belum ada pengingat</p>'; return; }
+			if(reminders.length === 0) { 
+				list.innerHTML = '<p class="text-center text-gray-400 py-4 text-sm">Belum ada pengingat tersimpan</p>'; 
+				return; 
+			}
+			
 			list.innerHTML = reminders.map(r => {
 				let v = vehicles.find(v => v.id === r.vehicle_id);
-				// Tampilkan reminder yang aktif termasuk H-3
+				
+				// Tentukan teks recurrence
+				let recurrenceText = '';
+				let recurrenceDetail = '';
+				if(r.recurrence) {
+					if(r.recurrence.includes('MONTHLY;INTERVAL=1')) {
+						recurrenceText = '🔄 Setiap 1 bulan';
+						recurrenceDetail = 'Berulang setiap bulan - Tak Terhingga';
+					} else if(r.recurrence.includes('MONTHLY;INTERVAL=3')) {
+						recurrenceText = '🔄 Setiap 3 bulan';
+						recurrenceDetail = 'Berulang setiap 3 bulan - Tak Terhingga';
+					} else if(r.recurrence.includes('MONTHLY;INTERVAL=6')) {
+						recurrenceText = '🔄 Setiap 6 bulan';
+						recurrenceDetail = 'Berulang setiap 6 bulan - Tak Terhingga';
+					} else if(r.recurrence.includes('YEARLY;INTERVAL=1')) {
+						recurrenceText = '🔄 Setiap 1 tahun';
+						recurrenceDetail = 'Berulang setiap tahun - Tak Terhingga';
+					} else if(r.recurrence.includes('YEARLY;INTERVAL=5')) {
+						recurrenceText = '🔄 Setiap 5 tahun';
+						recurrenceDetail = 'Berulang setiap 5 tahun - Tak Terhingga';
+					}
+				} else {
+					recurrenceDetail = '⏰ Event satu kali (tidak berulang)';
+				}
+				
+				// Reminder aktif
 				let aktif = [];
 				if(r.h7) aktif.push('H-7');
-				if(r.h3) aktif.push('H-3');  // H-3 ditambahkan
+				if(r.h3) aktif.push('H-3');
 				if(r.h1) aktif.push('H-1');
 				if(r.h0) aktif.push('H-0');
-				let aktifText = aktif.length ? ` (${aktif.join(', ')})` : '';
+				let aktifText = aktif.length ? `⏰ ${aktif.join(', ')}` : '⏰ Tanpa pengingat';
 				
-				return `<div class="bg-gray-50 p-3 rounded-lg flex justify-between items-center">
-					<div>
-						<span class="font-medium">${v ? v.name : '-'}</span>
-						<p class="text-xs text-gray-600">${r.typeLabel}${aktifText}</p>
-						<p class="text-xs text-gray-500">${formatDateLong(r.startDate)}</p>
+				// Status jika sudah di-stop
+				let isStopped = r.stopped === true;
+				
+				return `<div class="bg-gray-50 p-3 rounded-lg ${isStopped ? 'opacity-60 bg-gray-100' : ''}" 
+							style="cursor:pointer; transition: all 0.2s;" 
+							onclick="detailReminder(${r.id})">
+					<div class="flex justify-between items-start">
+						<div class="flex-1">
+							<div class="flex items-center gap-2 flex-wrap">
+								<span class="font-semibold text-sm">${v ? v.name : '-'}</span>
+								<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">${r.typeLabel}</span>
+								${recurrenceText ? `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">${recurrenceText}</span>` : ''}
+								${isStopped ? `<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">⏹️ Dihentikan</span>` : ''}
+							</div>
+							<div class="text-xs text-gray-500 mt-1">
+								📅 Mulai: ${formatDateLong(r.startDate)} | ${aktifText}
+							</div>
+							<div class="text-xs text-gray-400 mt-0.5">
+								${recurrenceDetail}
+							</div>
+						</div>
+						<div class="flex gap-2">
+							<button onclick="event.stopPropagation(); bukaGoogleCalendarReminder(${r.id})" 
+									class="text-blue-500 hover:text-blue-700 p-1" title="Buka di Google Calendar">
+								<i class="fab fa-google"></i>
+							</button>
+							${!isStopped ? `
+							<button onclick="event.stopPropagation(); stopReminder(${r.id})" 
+									class="text-orange-500 hover:text-orange-700 p-1" title="Hentikan pengingat berulang">
+								<i class="fas fa-stop-circle"></i>
+							</button>
+							` : ''}
+							<button onclick="event.stopPropagation(); hapusReminder(${r.id})" 
+									class="text-red-500 hover:text-red-700 p-1" title="Hapus dari daftar">
+								<i class="fas fa-trash"></i>
+							</button>
+						</div>
 					</div>
-					<button onclick="hapusReminder(${r.id})" class="text-red-500"><i class="fas fa-trash"></i></button>
 				</div>`;
 			}).join('');
 		}
+		
+		// Lihat detail reminder (modal popup)
+		window.detailReminder = function(id) {
+			let r = reminders.find(r => r.id === id);
+			if(!r) return;
+			
+			let v = vehicles.find(v => v.id === r.vehicle_id);
+			
+			// Tentukan teks recurrence
+			let recurrenceText = '';
+			if(r.recurrence) {
+				if(r.recurrence.includes('MONTHLY;INTERVAL=1')) recurrenceText = 'Setiap 1 bulan (Tak Terhingga)';
+				else if(r.recurrence.includes('MONTHLY;INTERVAL=3')) recurrenceText = 'Setiap 3 bulan (Tak Terhingga)';
+				else if(r.recurrence.includes('MONTHLY;INTERVAL=6')) recurrenceText = 'Setiap 6 bulan (Tak Terhingga)';
+				else if(r.recurrence.includes('YEARLY;INTERVAL=1')) recurrenceText = 'Setiap 1 tahun (Tak Terhingga)';
+				else if(r.recurrence.includes('YEARLY;INTERVAL=5')) recurrenceText = 'Setiap 5 tahun (Tak Terhingga)';
+			} else {
+				recurrenceText = 'Event satu kali (tidak berulang)';
+			}
+			
+			// Reminder aktif
+			let aktif = [];
+			if(r.h7) aktif.push('H-7');
+			if(r.h3) aktif.push('H-3');
+			if(r.h1) aktif.push('H-1');
+			if(r.h0) aktif.push('H-0');
+			
+			let isStopped = r.stopped === true;
+			
+			Swal.fire({
+				title: `${v ? v.name : '-'} - ${r.typeLabel}`,
+				html: `
+					<div style="text-align: left; font-size: 14px;">
+						<p><strong>📅 Tanggal Mulai:</strong> ${formatDateLong(r.startDate)}</p>
+						<p><strong>🔄 Pengulangan:</strong> ${recurrenceText}</p>
+						<p><strong>⏰ Pengingat:</strong> ${aktif.length ? aktif.join(', ') : 'Tidak ada'}</p>
+						<p><strong>📝 Status:</strong> ${isStopped ? '<span class="text-red-500">Dihentikan</span>' : '<span class="text-green-500">Aktif (Tak Terhingga)</span>'}</p>
+						<hr class="my-2">
+						<p class="text-gray-500 text-xs">💡 Event ini akan terus berulang sampai Anda menghentikannya atau menghapusnya dari Google Calendar.</p>
+					</div>
+				`,
+				icon: 'info',
+				confirmButtonText: 'Tutup',
+				showCancelButton: true,
+				cancelButtonText: 'Buka Google Calendar',
+				cancelButtonColor: '#4285f4'
+			}).then((result) => {
+				if(result.dismiss === Swal.DismissReason.cancel) {
+					bukaGoogleCalendarReminder(id);
+				}
+			});
+		};
+
+		// Buka event di Google Calendar (untuk edit)
+		window.bukaGoogleCalendarReminder = function(id) {
+			let r = reminders.find(r => r.id === id);
+			if(!r) return;
+			
+			let v = vehicles.find(v => v.id === r.vehicle_id);
+			let title = r.typeLabel + ' - ' + (v ? v.name : '');
+			let startDate = r.startDate.replace(/-/g, '') + 'T090000Z';
+			let endDate = r.startDate.replace(/-/g, '') + 'T100000Z';
+			let desc = `Kendaraan: ${v ? v.name : '-'} (${v ? v.plate : '-'})\nJenis: ${r.typeLabel}\n\nDibuat dari Aplikasi AKHIRA`;
+			
+			let calUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE`;
+			calUrl += `&text=${encodeURIComponent(title)}`;
+			calUrl += `&dates=${startDate}/${endDate}`;
+			calUrl += `&details=${encodeURIComponent(desc)}`;
+			
+			if(r.recurrence) {
+				calUrl += `&recurrence=${encodeURIComponent(r.recurrence)}`;
+			}
+			
+			window.open(calUrl, '_blank');
+			showAlert('Event dibuka di Google Calendar', 'success');
+		};
+
+		// STOP reminder (tandai sebagai dihentikan, tidak dihapus)
+		window.stopReminder = async function(id) {
+			let result = await Swal.fire({
+				title: 'Hentikan pengingat?',
+				text: 'Event yang sudah dibuat di Google Calendar tetap ada, tapi pengingat ini akan ditandai sebagai "Dihentikan" di aplikasi. Anda bisa menghapusnya nanti.',
+				icon: 'warning',
+				showCancelButton: true,
+				confirmButtonText: 'Ya, hentikan',
+				cancelButtonText: 'Batal',
+				confirmButtonColor: '#f59e0b'
+			});
+			
+			if(result.isConfirmed) {
+				let r = reminders.find(r => r.id === id);
+				if(r) {
+					r.stopped = true;
+					r.stoppedAt = new Date().toISOString();
+					localStorage.setItem('reminders', JSON.stringify(reminders));
+					renderReminderList();
+					showAlert('Pengingat telah dihentikan', 'success');
+				}
+			}
+		};
+
+		// Hapus reminder (hard delete)
+		window.hapusReminder = async function(id) {
+			let result = await Swal.fire({
+				title: 'Hapus pengingat?',
+				text: 'Data akan dihapus dari daftar. Event di Google Calendar tetap ada.',
+				icon: 'question',
+				showCancelButton: true,
+				confirmButtonText: 'Ya, hapus',
+				cancelButtonText: 'Batal'
+			});
+			
+			if(result.isConfirmed) {
+				reminders = reminders.filter(r => r.id !== id);
+				localStorage.setItem('reminders', JSON.stringify(reminders));
+				renderReminderList();
+				showAlert('Pengingat dihapus', 'success');
+			}
+		};        
         
-        window.hapusReminder = function(id) {
-            reminders = reminders.filter(r => r.id !== id);
-            localStorage.setItem('reminders', JSON.stringify(reminders));
-            renderReminderList();
-            showAlert('Pengingat dihapus', 'success');
-        };
         
         document.getElementById('reminderType').addEventListener('change', function() {
             document.getElementById('reminderCustomName').classList.toggle('hidden', this.value !== 'custom');
