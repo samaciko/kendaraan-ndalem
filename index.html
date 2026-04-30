@@ -509,128 +509,142 @@
         };
         
         window.exportICSPrivate = function () {
+
 		  let vid = document.getElementById('reminderVehicle').value;
 		  if (!vid) { showAlert('Pilih kendaraan', 'warning'); return; }
-
+		
 		  let v = vehicles.find(v => v.id == vid);
-
+		
 		  let typeSel = document.getElementById('reminderType');
 		  let title = (typeSel.value === 'custom')
-			? document.getElementById('reminderCustomName').value
-			: typeSel.options[typeSel.selectedIndex].text;
-
+		    ? document.getElementById('reminderCustomName').value
+		    : typeSel.options[typeSel.selectedIndex].text;
+		
 		  if (typeSel.value === 'custom' && !title) {
-			showAlert('Isi nama pengingat', 'warning');
-			return;
+		    showAlert('Isi nama pengingat', 'warning');
+		    return;
 		  }
-
+		
 		  let date = document.getElementById('reminderStartDate').value;
 		  if (!date) { showAlert('Pilih tanggal', 'warning'); return; }
-
+		
 		  // ===============================
-		  // FORMAT WAKTU (UTC → WIB aman)
+		  // FORMAT TANGGAL (LOCAL TIME - PALING AMAN)
 		  // ===============================
-		  let start = date.replace(/-/g, '') + 'T020000Z'; // 09:00 WIB
-		  let end = date.replace(/-/g, '') + 'T030000Z';
-
+		  let start = date.replace(/-/g, '') + 'T090000';
+		  let end = date.replace(/-/g, '') + 'T100000';
+		
 		  // ===============================
-		  // UID & TIMESTAMP
+		  // UID & TIMESTAMP (WAJIB)
 		  // ===============================
 		  let uid = Date.now() + "@akhira.app";
 		  let dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-
+		
 		  // ===============================
 		  // RECURRENCE
 		  // ===============================
 		  let rrule = '';
 		  let recurrenceLabel = '';
-
+		
 		  switch (typeSel.value) {
-			case 'ganti_oli':
-			  rrule = 'FREQ=MONTHLY;INTERVAL=1';
-			  recurrenceLabel = 'Setiap 1 bulan';
-			  break;
-			case 'service_rutin':
-			  rrule = 'FREQ=MONTHLY;INTERVAL=3';
-			  recurrenceLabel = 'Setiap 3 bulan';
-			  break;
-			case 'pajak_tahunan':
-			  rrule = 'FREQ=YEARLY;INTERVAL=1';
-			  recurrenceLabel = 'Setiap 1 tahun';
-			  break;
-			case 'pajak_5_tahun':
-			  rrule = 'FREQ=YEARLY;INTERVAL=5';
-			  recurrenceLabel = 'Setiap 5 tahun';
-			  break;
-			default:
-			  recurrenceLabel = 'Tidak berulang';
+		    case 'ganti_oli':
+		      rrule = 'FREQ=MONTHLY;INTERVAL=1';
+		      recurrenceLabel = 'Setiap 1 bulan';
+		      break;
+		    case 'service_rutin':
+		      rrule = 'FREQ=MONTHLY;INTERVAL=3';
+		      recurrenceLabel = 'Setiap 3 bulan';
+		      break;
+		    case 'pajak_tahunan':
+		      rrule = 'FREQ=YEARLY;INTERVAL=1';
+		      recurrenceLabel = 'Setiap 1 tahun';
+		      break;
+		    case 'pajak_5_tahun':
+		      rrule = 'FREQ=YEARLY;INTERVAL=5';
+		      recurrenceLabel = 'Setiap 5 tahun';
+		      break;
+		    default:
+		      recurrenceLabel = 'Tidak berulang';
 		  }
-
+		
+		  // ===============================
+		  // ESCAPE TEXT (WAJIB)
+		  // ===============================
+		  const escapeText = (text) =>
+		    text
+		      .replace(/\\/g, '\\\\')
+		      .replace(/\n/g, '\\n')
+		      .replace(/,/g, '\\,')
+		      .replace(/;/g, '\\;');
+		
 		  // ===============================
 		  // REMINDER (VALARM)
 		  // ===============================
 		  let alarms = '';
+		
 		  const addAlarm = (trigger, label) => {
-			alarms += `BEGIN:VALARM
-		TRIGGER:${trigger}
-		ACTION:DISPLAY
-		DESCRIPTION:${label}
-		END:VALARM
-		`;
+		    alarms +=
+		"BEGIN:VALARM\r\n" +
+		"TRIGGER:" + trigger + "\r\n" +
+		"ACTION:DISPLAY\r\n" +
+		"DESCRIPTION:" + label + "\r\n" +
+		"END:VALARM\r\n";
 		  };
-
+		
 		  if (document.getElementById('reminderH7').checked) addAlarm('-P7D', 'H-7');
 		  if (document.getElementById('reminderH3').checked) addAlarm('-P3D', 'H-3');
 		  if (document.getElementById('reminderH1').checked) addAlarm('-P1D', 'H-1');
 		  if (document.getElementById('reminderH0').checked) addAlarm('-PT0M', 'H-0');
-
+		
 		  // ===============================
-		  // ESCAPE TEXT (ANTI ERROR)
+		  // DESCRIPTION
 		  // ===============================
-		  const escapeText = (text) =>
-			text.replace(/\\/g, '\\\\')
-				.replace(/\n/g, '\\n')
-				.replace(/,/g, '\\,')
-				.replace(/;/g, '\\;');
-
 		  let description = escapeText(
-			`Kendaraan: ${v.name} (${v.plate})
-		Jenis: ${title}
-		Pengulangan: ${recurrenceLabel}`
+		    "Kendaraan: " + v.name + " (" + v.plate + ")\n" +
+		    "Jenis: " + title + "\n" +
+		    "Pengulangan: " + recurrenceLabel
 		  );
-
+		
 		  // ===============================
-		  // ICS FINAL
+		  // ICS CONTENT (CRLF + TANPA SPASI)
 		  // ===============================
+		  const nl = "\r\n";
+		
 		  let ics =
-		`BEGIN:VCALENDAR
-		VERSION:2.0
-		CALSCALE:GREGORIAN
-		BEGIN:VEVENT
-		UID:${uid}
-		DTSTAMP:${dtstamp}
-		SUMMARY:${escapeText(title + ' - ' + v.name)}
-		DESCRIPTION:${description}
-		DTSTART:${start}
-		DTEND:${end}
-		${rrule ? `RRULE:${rrule}` : ''}
-		${alarms}END:VEVENT
-		END:VCALENDAR`;
-
+		"BEGIN:VCALENDAR" + nl +
+		"VERSION:2.0" + nl +
+		"CALSCALE:GREGORIAN" + nl +
+		"BEGIN:VEVENT" + nl +
+		"UID:" + uid + nl +
+		"DTSTAMP:" + dtstamp + nl +
+		"SUMMARY:" + escapeText(title + " - " + v.name) + nl +
+		"DESCRIPTION:" + description + nl +
+		"DTSTART:" + start + nl +
+		"DTEND:" + end + nl +
+		(rrule ? "RRULE:" + rrule + nl : "") +
+		alarms +
+		"END:VEVENT" + nl +
+		"END:VCALENDAR";
+		
+		  // ===============================
+		  // DOWNLOAD (PALING KOMPATIBEL)
+		  // ===============================
 		  let blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
 		  let url = URL.createObjectURL(blob);
-
-		  // ===============================
-		  // UX: ALERT DULU BARU BUKA
-		  // ===============================
-		  showAlert('Membuka kalender... Pilih aplikasi lalu klik Simpan', 'info');
-
-		  setTimeout(() => {
-			window.location.href = url;
-		  }, 250);
-
-		  // cleanup
+		
+		  let link = document.createElement('a');
+		  link.href = url;
+		  link.download = 'reminder.ics';
+		  document.body.appendChild(link);
+		  link.click();
+		  document.body.removeChild(link);
+		
 		  setTimeout(() => URL.revokeObjectURL(url), 5000);
+		
+		  // ===============================
+		  // UX INFO
+		  // ===============================
+		  showAlert('File kalender berhasil dibuat. Buka file lalu pilih Google Calendar.', 'success');
 		};
 
 		function renderReminderDropdown() {
