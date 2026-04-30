@@ -86,7 +86,6 @@
         .loading-spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        /* Report Container PDF Style */
         .report-container { background: white; padding: 20px; border-radius: 16px; max-width: 210mm; margin: 0 auto; font-family: system-ui, -apple-system, sans-serif; }
         .report-header { display: flex; align-items: center; gap: 20px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e5e7eb; }
         .report-logo { width: 70px; height: 70px; overflow: hidden; border-radius: 12px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; }
@@ -101,6 +100,10 @@
         .total-inner { text-align: right; }
         .total-label { font-size: 0.9rem; color: #6b7280; margin-bottom: 5px; }
         .total-value { font-size: 1.3rem; font-weight: bold; color: #1f2937; }
+        
+        .reminder-card { background: #f9fafb; border-radius: 12px; padding: 12px; margin-bottom: 10px; border-left: 4px solid #3b82f6; transition: all 0.2s; }
+        .reminder-card.stopped { opacity: 0.6; background: #f3f4f6; border-left-color: #9ca3af; }
+        .reminder-card:hover { transform: translateX(4px); }
     </style>
 </head>
 <body>
@@ -188,19 +191,37 @@
 
         <div id="contentReminder" class="hidden">
             <div class="bg-white rounded-xl p-4">
-                <h2 class="text-base font-bold mb-4">🔔 Pengingat (Google Calendar)</h2>
+                <h2 class="text-base font-bold mb-4">🔔 Pengingat & Alarm</h2>
                 <div class="bg-blue-50 p-4 rounded-xl mb-4">
-                    <h3 class="font-medium text-sm mb-3">Tambah Pengingat</h3>
+                    <h3 class="font-medium text-sm mb-3">➕ Tambah Pengingat Baru</h3>
                     <div class="space-y-3">
-                        <select id="reminderVehicle" class="input-field"><option value="">Pilih Kendaraan</option></select>
-                        <select id="reminderType" class="input-field"><option value="pajak_tahunan">📄 Pajak Tahunan</option><option value="pajak_5_tahun">📋 Pajak 5 Tahun</option><option value="ganti_oli">🛢️ Ganti Oli</option><option value="service_rutin">🔧 Service Rutin</option><option value="custom">📌 Pengingat Kustom</option></select>
+                        <select id="reminderVehicle" class="input-field">
+                            <option value="">Pilih Kendaraan</option>
+                        </select>
+                        <select id="reminderType" class="input-field">
+                            <option value="pajak_tahunan">📄 Pajak Tahunan</option>
+                            <option value="pajak_5_tahun">📋 Pajak 5 Tahun</option>
+                            <option value="ganti_oli">🛢️ Ganti Oli</option>
+                            <option value="service_rutin">🔧 Service Rutin</option>
+                            <option value="custom">📌 Pengingat Kustom</option>
+                        </select>
                         <input type="text" id="reminderCustomName" placeholder="Nama Pengingat" class="input-field hidden">
                         <input type="date" id="reminderStartDate" class="input-field">
-                        <div><label class="text-xs text-gray-600">Pengingat:</label><div class="flex gap-3 mt-1"><label><input type="checkbox" id="reminderH7" checked> H-7</label><label><input type="checkbox" id="reminderH3" checked> H-3</label><label><input type="checkbox" id="reminderH1" checked> H-1</label><label><input type="checkbox" id="reminderH0" checked> H-0</label></div></div>
-                        <button onclick="exportICSPrivate()" class="btn-success"><i class="fab fa-google mr-1"></i>Tambah ke Google Calendar</button>
+                        <div>
+                            <label class="text-xs text-gray-600 font-medium">⏰ Alarm (Pengingat):</label>
+                            <div class="flex flex-wrap gap-3 mt-2">
+                                <label class="flex items-center gap-1"><input type="checkbox" id="reminderH7" checked> <span class="text-sm">H-7</span></label>
+                                <label class="flex items-center gap-1"><input type="checkbox" id="reminderH3" checked> <span class="text-sm">H-3</span></label>
+                                <label class="flex items-center gap-1"><input type="checkbox" id="reminderH1" checked> <span class="text-sm">H-1</span></label>
+                                <label class="flex items-center gap-1"><input type="checkbox" id="reminderH0" checked> <span class="text-sm">H-0 (Hari H)</span></label>
+                            </div>
+                        </div>
+                        <button onclick="simpanReminderKeDatabase()" class="btn-success"><i class="fas fa-save mr-1"></i>Simpan Pengingat</button>
+                        <button onclick="exportICSPrivate()" class="btn-primary bg-[#4285f4]"><i class="fab fa-google mr-1"></i>Export ke Google Calendar</button>
                     </div>
                 </div>
-                <div id="reminderList" class="space-y-2"></div>
+                <h3 class="font-semibold mb-3"><i class="fas fa-list mr-2"></i>Daftar Pengingat</h3>
+                <div id="reminderList" class="space-y-2 max-h-[500px] overflow-y-auto"></div>
             </div>
         </div>
     </div>
@@ -225,7 +246,22 @@
     <div id="modalEditExpense" class="modal-overlay"><div class="modal-content"><button class="modal-close" onclick="closeModal('modalEditExpense')">✕</button><h3 class="text-lg font-bold mb-4">✏️ Edit Pengeluaran</h3><form id="editExpenseForm" class="space-y-3"><input type="hidden" id="editExpenseId"><input type="date" id="editExpenseDate" required class="input-field"><select id="editExpenseType" required class="input-field"><option value="">Pilih Jenis</option><option value="Service Rutin">🔧 Service</option><option value="Ganti Oli">🛢️ Ganti Oli</option><option value="Pajak Tahunan">📄 Pajak Tahunan</option><option value="Bensin">⛽ Bensin</option><option value="Perbaikan">🔨 Perbaikan</option></select><div class="rupiah-wrapper"><input type="text" id="editExpenseCost" placeholder="0" required class="input-rupiah"></div><input type="text" id="editExpenseDesc" placeholder="Deskripsi" class="input-field"><input type="number" id="editExpenseKm" placeholder="KM" class="input-field"><div><input type="file" id="editExpensePhoto" accept="image/*" class="text-sm w-full"></div><button type="submit" class="btn-primary">Update</button></form></div></div>
     <div id="modalPhoto" class="modal-overlay" style="background:rgba(0,0,0,0.9)"><div class="relative max-w-2xl w-full"><button class="modal-close bg-white" onclick="closeModal('modalPhoto')">✕</button><img id="photoViewer" src="" class="w-full h-auto rounded-lg"></div></div>
 
-    <!-- Report Container PDF - ELEMEN LENGKAP -->
+    <!-- Modal Detail Reminder -->
+    <div id="modalDetailReminder" class="modal-overlay">
+        <div class="modal-content max-w-md">
+            <button class="modal-close" onclick="closeModal('modalDetailReminder')">✕</button>
+            <h3 id="detailReminderTitle" class="text-lg font-bold mb-4">Detail Pengingat</h3>
+            <div id="detailReminderContent" class="space-y-2 text-sm">
+                <!-- Dynamic content -->
+            </div>
+            <div class="flex gap-2 mt-4">
+                <button id="detailReminderStopBtn" class="flex-1 bg-orange-500 text-white p-2 rounded-xl">Hentikan</button>
+                <button id="detailReminderDeleteBtn" class="flex-1 bg-red-500 text-white p-2 rounded-xl">Hapus</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Container PDF -->
     <div id="reportContainer" style="position:absolute; left:-9999px; top:0;">
         <div class="report-container">
             <div class="report-header">
@@ -237,9 +273,7 @@
                     <p id="reportDate"></p>
                 </div>
             </div>
-            
             <h3 style="font-size:1rem; font-weight:bold; margin:15px 0 10px; text-align:left;">Detail Transaksi</h3>
-            
             <table class="report-table">
                 <thead>
                     <tr>
@@ -255,14 +289,12 @@
                 </thead>
                 <tbody id="reportTableBody"></tbody>
             </table>
-            
             <div class="total-box">
                 <div class="total-inner">
                     <p class="total-label">Total</p>
                     <p class="total-value" id="reportTotal">Rp0</p>
                 </div>
             </div>
-            
             <div class="report-footer">
                 <p>Dicetak: <span id="reportPrintDate"></span></p>
                 <p>AKHIRA - Aplikasi Kendaraan Ndalem Kharisma P3TQ</p>
@@ -276,7 +308,7 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNnbXFtdmZmcGVwd2FrcmhhZ25vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4ODI3NjEsImV4cCI6MjA4ODQ1ODc2MX0.aBmS5ykLVtwht_yXBqVc7tCKAGuR9I7kseOSMpfleE0';
         const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
-        let currentUser = null, vehicles = [], expenses = [], reminders = JSON.parse(localStorage.getItem('reminders') || '[]');
+        let currentUser = null, vehicles = [], expenses = [], reminders = [];
         window.selectedVehicleId = null;
         let currentMonthFilter = 'all';
         
@@ -317,25 +349,514 @@
             return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
         }
         
-        function formatDate(dateStr) {
-            return formatDateLong(dateStr);
-        }
-        
         function getTodayISO() {
             return new Date().toISOString().split('T')[0];
         }
         
-        // CRUD Functions
+        // ==================== REMINDER FUNCTIONS (Supabase) ====================
+        
+        async function loadRemindersFromDatabase() {
+            if(!currentUser) return;
+            showLoading(true, 'Memuat pengingat...');
+            try {
+                let { data, error } = await sb
+                    .from('reminders')
+                    .select('*')
+                    .eq('user_id', currentUser.id)
+                    .order('start_date', { ascending: false });
+                
+                if(error) throw error;
+                reminders = data || [];
+                renderReminderList();
+            } catch(err) {
+                console.error('Load reminders error:', err);
+                showAlert('Gagal memuat pengingat', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        async function simpanReminderKeDatabase() {
+            if(!currentUser) {
+                showAlert('Silakan login terlebih dahulu', 'warning');
+                return;
+            }
+            
+            let vehicleId = document.getElementById('reminderVehicle').value;
+            if(!vehicleId) {
+                showAlert('Pilih kendaraan', 'warning');
+                return;
+            }
+            
+            let typeSelect = document.getElementById('reminderType');
+            let typeValue = typeSelect.value;
+            let typeLabel = typeSelect.options[typeSelect.selectedIndex].text;
+            
+            if(typeValue === 'custom') {
+                let customName = document.getElementById('reminderCustomName').value.trim();
+                if(!customName) {
+                    showAlert('Isi nama pengingat kustom', 'warning');
+                    return;
+                }
+                typeLabel = customName;
+            }
+            
+            let startDate = document.getElementById('reminderStartDate').value;
+            if(!startDate) {
+                showAlert('Pilih tanggal mulai', 'warning');
+                return;
+            }
+            
+            // Recurrence rule
+            let recurrence = null;
+            switch(typeValue) {
+                case 'ganti_oli':
+                    recurrence = 'FREQ=MONTHLY;INTERVAL=1';
+                    break;
+                case 'service_rutin':
+                    recurrence = 'FREQ=MONTHLY;INTERVAL=3';
+                    break;
+                case 'pajak_tahunan':
+                    recurrence = 'FREQ=YEARLY;INTERVAL=1';
+                    break;
+                case 'pajak_5_tahun':
+                    recurrence = 'FREQ=YEARLY;INTERVAL=5';
+                    break;
+                default:
+                    recurrence = null;
+            }
+            
+            let h7 = document.getElementById('reminderH7').checked;
+            let h3 = document.getElementById('reminderH3').checked;
+            let h1 = document.getElementById('reminderH1').checked;
+            let h0 = document.getElementById('reminderH0').checked;
+            
+            if(!h7 && !h3 && !h1 && !h0) {
+                showAlert('Pilih minimal satu alarm (H-7, H-3, H-1, atau H-0)', 'warning');
+                return;
+            }
+            
+            showLoading(true, 'Menyimpan pengingat...');
+            try {
+                let { data, error } = await sb
+                    .from('reminders')
+                    .insert([{
+                        user_id: currentUser.id,
+                        vehicle_id: parseInt(vehicleId),
+                        type_label: typeLabel,
+                        start_date: startDate,
+                        recurrence: recurrence,
+                        h7: h7,
+                        h3: h3,
+                        h1: h1,
+                        h0: h0,
+                        stopped: false,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    }])
+                    .select();
+                
+                if(error) throw error;
+                
+                showAlert('Pengingat berhasil disimpan!', 'success');
+                
+                // Reset form
+                document.getElementById('reminderCustomName').value = '';
+                document.getElementById('reminderStartDate').value = getTodayISO();
+                document.getElementById('reminderH7').checked = true;
+                document.getElementById('reminderH3').checked = true;
+                document.getElementById('reminderH1').checked = true;
+                document.getElementById('reminderH0').checked = true;
+                document.getElementById('reminderType').value = 'pajak_tahunan';
+                document.getElementById('reminderCustomName').classList.add('hidden');
+                
+                await loadRemindersFromDatabase();
+                
+            } catch(err) {
+                console.error('Save reminder error:', err);
+                showAlert('Gagal menyimpan pengingat: ' + err.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        async function updateReminderStop(id, stopped) {
+            showLoading(true, 'Mengupdate status...');
+            try {
+                let { error } = await sb
+                    .from('reminders')
+                    .update({ 
+                        stopped: stopped,
+                        stopped_at: stopped ? new Date().toISOString() : null,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', id)
+                    .eq('user_id', currentUser.id);
+                
+                if(error) throw error;
+                
+                await loadRemindersFromDatabase();
+                showAlert(stopped ? 'Pengingat dihentikan' : 'Pengingat diaktifkan kembali', 'success');
+            } catch(err) {
+                console.error('Update reminder error:', err);
+                showAlert('Gagal mengupdate pengingat', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        async function hapusReminderFromDatabase(id) {
+            let result = await Swal.fire({
+                title: 'Hapus pengingat?',
+                text: 'Data akan dihapus permanen.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Ya, hapus',
+                cancelButtonText: 'Batal'
+            });
+            
+            if(!result.isConfirmed) return;
+            
+            showLoading(true, 'Menghapus pengingat...');
+            try {
+                let { error } = await sb
+                    .from('reminders')
+                    .delete()
+                    .eq('id', id)
+                    .eq('user_id', currentUser.id);
+                
+                if(error) throw error;
+                
+                await loadRemindersFromDatabase();
+                showAlert('Pengingat dihapus', 'success');
+            } catch(err) {
+                console.error('Delete reminder error:', err);
+                showAlert('Gagal menghapus pengingat', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function getRecurrenceText(recurrence) {
+            if(!recurrence) return 'Tidak berulang';
+            if(recurrence.includes('MONTHLY;INTERVAL=1')) return '🔄 Setiap 1 bulan';
+            if(recurrence.includes('MONTHLY;INTERVAL=3')) return '🔄 Setiap 3 bulan';
+            if(recurrence.includes('YEARLY;INTERVAL=1')) return '🔄 Setiap 1 tahun';
+            if(recurrence.includes('YEARLY;INTERVAL=5')) return '🔄 Setiap 5 tahun';
+            return 'Berulang';
+        }
+        
+        function getAlarmText(reminder) {
+            let alarms = [];
+            if(reminder.h7) alarms.push('H-7');
+            if(reminder.h3) alarms.push('H-3');
+            if(reminder.h1) alarms.push('H-1');
+            if(reminder.h0) alarms.push('H-0');
+            return alarms.length ? `⏰ ${alarms.join(', ')}` : '⏰ Tanpa alarm';
+        }
+        
+        function renderReminderList() {
+            let container = document.getElementById('reminderList');
+            if(!container) return;
+            
+            if(reminders.length === 0) {
+                container.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-bell-slash text-3xl mb-2"></i><p>Belum ada pengingat</p><p class="text-xs mt-1">Tambah pengingat di atas</p></div>';
+                return;
+            }
+            
+            container.innerHTML = reminders.map(r => {
+                let vehicle = vehicles.find(v => v.id === r.vehicle_id);
+                let vehicleName = vehicle ? vehicle.name : 'Kendaraan tidak ditemukan';
+                let isStopped = r.stopped === true;
+                
+                return `
+                    <div class="reminder-card ${isStopped ? 'stopped' : ''}" onclick="showReminderDetail(${r.id})">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 flex-wrap mb-1">
+                                    <span class="font-semibold text-sm">${escapeHtml(vehicleName)}</span>
+                                    <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">${escapeHtml(r.type_label)}</span>
+                                    ${getRecurrenceText(r.recurrence) ? `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">${getRecurrenceText(r.recurrence)}</span>` : ''}
+                                    ${isStopped ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">⏹️ Dihentikan</span>' : '<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">🔔 Aktif</span>'}
+                                </div>
+                                <div class="text-xs text-gray-500">
+                                    📅 Mulai: ${formatDateLong(r.start_date)} | ${getAlarmText(r)}
+                                </div>
+                            </div>
+                            <div class="flex gap-1">
+                                <button onclick="event.stopPropagation(); exportSingleReminderToCalendar(${r.id})" 
+                                        class="text-blue-500 hover:text-blue-700 p-1.5 rounded-lg hover:bg-blue-50" title="Export ke Google Calendar">
+                                    <i class="fab fa-google text-sm"></i>
+                                </button>
+                                ${!isStopped ? `
+                                <button onclick="event.stopPropagation(); updateReminderStop(${r.id}, true)" 
+                                        class="text-orange-500 hover:text-orange-700 p-1.5 rounded-lg hover:bg-orange-50" title="Hentikan pengingat">
+                                    <i class="fas fa-stop-circle text-sm"></i>
+                                </button>
+                                ` : ''}
+                                <button onclick="event.stopPropagation(); hapusReminderFromDatabase(${r.id})" 
+                                        class="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50" title="Hapus">
+                                    <i class="fas fa-trash text-sm"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function escapeHtml(text) {
+            if(!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        window.showReminderDetail = function(id) {
+            let reminder = reminders.find(r => r.id === id);
+            if(!reminder) return;
+            
+            let vehicle = vehicles.find(v => v.id === reminder.vehicle_id);
+            let isStopped = reminder.stopped === true;
+            
+            document.getElementById('detailReminderTitle').innerHTML = `<i class="fas fa-bell mr-2"></i>${escapeHtml(reminder.type_label)}`;
+            document.getElementById('detailReminderContent').innerHTML = `
+                <div class="bg-gray-50 p-3 rounded-lg">
+                    <p><strong>🚗 Kendaraan:</strong> ${vehicle ? escapeHtml(vehicle.name) + ' (' + escapeHtml(vehicle.plate) + ')' : '-'}</p>
+                    <p><strong>📅 Tanggal Mulai:</strong> ${formatDateLong(reminder.start_date)}</p>
+                    <p><strong>🔄 Pengulangan:</strong> ${getRecurrenceText(reminder.recurrence)}</p>
+                    <p><strong>⏰ Alarm:</strong> ${getAlarmText(reminder)}</p>
+                    <p><strong>📝 Status:</strong> ${isStopped ? '<span class="text-red-500">Dihentikan</span>' : '<span class="text-green-500">Aktif</span>'}</p>
+                    ${reminder.stopped_at ? `<p><strong>⏹️ Dihentikan pada:</strong> ${formatDateLong(reminder.stopped_at)}</p>` : ''}
+                </div>
+                <div class="text-xs text-gray-400 mt-2 italic">
+                    💡 Event akan terus berulang sesuai jadwal sampai Anda menghentikannya.
+                </div>
+            `;
+            
+            let stopBtn = document.getElementById('detailReminderStopBtn');
+            let deleteBtn = document.getElementById('detailReminderDeleteBtn');
+            
+            // Clone to remove old listeners
+            let newStopBtn = stopBtn.cloneNode(true);
+            let newDeleteBtn = deleteBtn.cloneNode(true);
+            stopBtn.parentNode.replaceChild(newStopBtn, stopBtn);
+            deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
+            
+            if(!isStopped) {
+                newStopBtn.textContent = '⏹️ Hentikan Pengingat';
+                newStopBtn.onclick = () => {
+                    closeModal('modalDetailReminder');
+                    updateReminderStop(id, true);
+                };
+            } else {
+                newStopBtn.textContent = '✅ Aktifkan Kembali';
+                newStopBtn.classList.remove('bg-orange-500');
+                newStopBtn.classList.add('bg-green-500');
+                newStopBtn.onclick = () => {
+                    closeModal('modalDetailReminder');
+                    updateReminderStop(id, false);
+                };
+            }
+            
+            newDeleteBtn.onclick = () => {
+                closeModal('modalDetailReminder');
+                hapusReminderFromDatabase(id);
+            };
+            
+            document.getElementById('modalDetailReminder').style.display = 'flex';
+        };
+        
+        window.exportSingleReminderToCalendar = function(id) {
+            let reminder = reminders.find(r => r.id === id);
+            if(!reminder) return;
+            
+            let vehicle = vehicles.find(v => v.id === reminder.vehicle_id);
+            let title = reminder.type_label + ' - ' + (vehicle ? vehicle.name : '');
+            let startDate = reminder.start_date.replace(/-/g, '') + 'T090000Z';
+            let endDate = reminder.start_date.replace(/-/g, '') + 'T100000Z';
+            
+            let alarms = [];
+            if(reminder.h7) alarms.push('-P7D');
+            if(reminder.h3) alarms.push('-P3D');
+            if(reminder.h1) alarms.push('-P1D');
+            if(reminder.h0) alarms.push('-PT0M');
+            
+            let reminderParam = alarms.length ? `&reminders=popup:${alarms.join(',')}` : '';
+            
+            let desc = `Kendaraan: ${vehicle ? vehicle.name + ' (' + vehicle.plate + ')' : '-'}\nJenis: ${reminder.type_label}\n\nDibuat dari Aplikasi AKHIRA\nAlarm: ${getAlarmText(reminder)}`;
+            
+            let calUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE`;
+            calUrl += `&text=${encodeURIComponent(title)}`;
+            calUrl += `&dates=${startDate}/${endDate}`;
+            calUrl += `&details=${encodeURIComponent(desc)}`;
+            if(reminder.recurrence) {
+                calUrl += `&recurrence=${encodeURIComponent(reminder.recurrence)}`;
+            }
+            calUrl += reminderParam;
+            
+            window.open(calUrl, '_blank');
+            showAlert('Event dibuka di Google Calendar', 'success');
+        };
+        
+        // Export ICS with alarms
+        window.exportICSPrivate = function() {
+            let vehicleId = document.getElementById('reminderVehicle').value;
+            if(!vehicleId) {
+                showAlert('Pilih kendaraan', 'warning');
+                return;
+            }
+            
+            let vehicle = vehicles.find(v => v.id == vehicleId);
+            if(!vehicle) {
+                showAlert('Kendaraan tidak ditemukan', 'warning');
+                return;
+            }
+            
+            let typeSelect = document.getElementById('reminderType');
+            let typeValue = typeSelect.value;
+            let title = (typeValue === 'custom')
+                ? document.getElementById('reminderCustomName').value.trim()
+                : typeSelect.options[typeSelect.selectedIndex].text;
+            
+            if(typeValue === 'custom' && !title) {
+                showAlert('Isi nama pengingat', 'warning');
+                return;
+            }
+            
+            let startDate = document.getElementById('reminderStartDate').value;
+            if(!startDate) {
+                showAlert('Pilih tanggal', 'warning');
+                return;
+            }
+            
+            let h7 = document.getElementById('reminderH7').checked;
+            let h3 = document.getElementById('reminderH3').checked;
+            let h1 = document.getElementById('reminderH1').checked;
+            let h0 = document.getElementById('reminderH0').checked;
+            
+            let recurrence = '';
+            let recurrenceLabel = '';
+            
+            switch(typeValue) {
+                case 'ganti_oli':
+                    recurrence = 'FREQ=MONTHLY;INTERVAL=1';
+                    recurrenceLabel = 'Setiap 1 bulan';
+                    break;
+                case 'service_rutin':
+                    recurrence = 'FREQ=MONTHLY;INTERVAL=3';
+                    recurrenceLabel = 'Setiap 3 bulan';
+                    break;
+                case 'pajak_tahunan':
+                    recurrence = 'FREQ=YEARLY;INTERVAL=1';
+                    recurrenceLabel = 'Setiap 1 tahun';
+                    break;
+                case 'pajak_5_tahun':
+                    recurrence = 'FREQ=YEARLY;INTERVAL=5';
+                    recurrenceLabel = 'Setiap 5 tahun';
+                    break;
+                default:
+                    recurrence = '';
+                    recurrenceLabel = 'Tidak berulang';
+            }
+            
+            const escapeText = (text) =>
+                text
+                    .replace(/\\/g, '\\\\')
+                    .replace(/\n/g, '\\n')
+                    .replace(/,/g, '\\,')
+                    .replace(/;/g, '\\;');
+            
+            let alarms = '';
+            const addAlarm = (trigger, label) => {
+                alarms +=
+                    "BEGIN:VALARM\r\n" +
+                    "TRIGGER:" + trigger + "\r\n" +
+                    "ACTION:DISPLAY\r\n" +
+                    "DESCRIPTION:" + label + "\r\n" +
+                    "END:VALARM\r\n";
+            };
+            
+            if(h7) addAlarm('-P7D', 'H-7');
+            if(h3) addAlarm('-P3D', 'H-3');
+            if(h1) addAlarm('-P1D', 'H-1');
+            if(h0) addAlarm('-PT0M', 'H-0');
+            
+            let startISO = startDate.replace(/-/g, '') + 'T090000';
+            let endISO = startDate.replace(/-/g, '') + 'T100000';
+            
+            let uid = Date.now() + "@akhira.app";
+            let dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+            
+            let description = escapeText(
+                "Kendaraan: " + vehicle.name + " (" + vehicle.plate + ")\n" +
+                "Jenis: " + title + "\n" +
+                "Pengulangan: " + recurrenceLabel
+            );
+            
+            const nl = "\r\n";
+            let ics = 
+                "BEGIN:VCALENDAR" + nl +
+                "VERSION:2.0" + nl +
+                "CALSCALE:GREGORIAN" + nl +
+                "BEGIN:VEVENT" + nl +
+                "UID:" + uid + nl +
+                "DTSTAMP:" + dtstamp + nl +
+                "SUMMARY:" + escapeText(title + " - " + vehicle.name) + nl +
+                "DESCRIPTION:" + description + nl +
+                "DTSTART:" + startISO + nl +
+                "DTEND:" + endISO + nl +
+                (recurrence ? "RRULE:" + recurrence + nl : "") +
+                alarms +
+                "END:VEVENT" + nl +
+                "END:VCALENDAR";
+            
+            let blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+            let url = URL.createObjectURL(blob);
+            let link = document.createElement('a');
+            link.href = url;
+            link.download = `${title.replace(/[^a-z0-9]/gi, '_')}_${startDate}.ics`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+            
+            showAlert('File ICS berhasil dibuat. Buka di Google Calendar untuk menambah event.', 'success');
+        };
+        
+        function renderReminderDropdown() {
+            let sel = document.getElementById('reminderVehicle');
+            if(sel) {
+                sel.innerHTML = '<option value="">Pilih Kendaraan</option>' + 
+                    vehicles.map(v => `<option value="${v.id}">${escapeHtml(v.name)} (${escapeHtml(v.plate)})</option>`).join('');
+            }
+        }
+        
+        // ==================== CRUD Functions ====================
+        
         async function reloadData() {
             if(!currentUser) return;
-            let { data: v } = await sb.from('vehicles').select('*').eq('user_id', currentUser.id);
-            vehicles = v || [];
-            let { data: e } = await sb.from('expenses').select('*').eq('user_id', currentUser.id);
-            expenses = e || [];
-            renderVehicles();
-            renderReminderDropdown();
-            renderReminderList();
-            if(selectedVehicleId) renderExpenses();
+            showLoading(true, 'Memuat data...');
+            try {
+                let { data: v, error: vErr } = await sb.from('vehicles').select('*').eq('user_id', currentUser.id);
+                if(vErr) throw vErr;
+                vehicles = v || [];
+                
+                let { data: e, error: eErr } = await sb.from('expenses').select('*').eq('user_id', currentUser.id);
+                if(eErr) throw eErr;
+                expenses = e || [];
+                
+                renderVehicles();
+                renderReminderDropdown();
+                await loadRemindersFromDatabase();
+                
+                if(selectedVehicleId) renderExpenses();
+            } catch(err) {
+                console.error('Reload data error:', err);
+                showAlert('Gagal memuat data', 'error');
+            } finally {
+                showLoading(false);
+            }
         }
         
         function renderVehicles() {
@@ -354,7 +875,7 @@
                 let initial = v.name.charAt(0).toUpperCase();
                 html += `<div class="vehicle-card" onclick="selectVehicle(${v.id})">
                     <div class="vehicle-image"><img src="${v.photo_url || `https://placehold.co/200/3b82f6/white?text=${initial}`}" onerror="this.src='https://placehold.co/200/3b82f6/white?text=${initial}'"></div>
-                    <div><h3 class="vehicle-name">${v.name}</h3><p class="vehicle-plate">${v.plate}</p>
+                    <div><h3 class="vehicle-name">${escapeHtml(v.name)}</h3><p class="vehicle-plate">${escapeHtml(v.plate)}</p>
                     <div class="vehicle-footer"><span class="badge badge-success">${count} transaksi</span><span class="vehicle-total">${formatRupiah(total)}</span></div></div>
                 </div>`;
             });
@@ -423,8 +944,8 @@
             }
             no.classList.add('hidden');
             list.innerHTML = filtered.map(e => `<div class="expense-item">
-                <div class="expense-header"><div><span class="expense-date">${formatDate(e.date)}</span><span class="expense-type">${e.type}</span></div><span class="expense-cost">${formatRupiah(e.cost)}</span></div>
-                ${e.description ? `<p class="text-xs text-gray-500 mt-1">${e.description}</p>` : ''}
+                <div class="expense-header"><div><span class="expense-date">${formatDateLong(e.date)}</span><span class="expense-type">${escapeHtml(e.type)}</span></div><span class="expense-cost">${formatRupiah(e.cost)}</span></div>
+                ${e.description ? `<p class="text-xs text-gray-500 mt-1">${escapeHtml(e.description)}</p>` : ''}
                 ${e.km ? `<p class="text-xs text-gray-400">KM: ${e.km}</p>` : ''}
                 <div class="expense-actions">${e.photo_url ? `<button class="expense-btn" onclick="lihatFoto('${e.photo_url}')"><i class="fas fa-image"></i>Foto</button>` : ''}<button class="expense-btn edit" onclick="editExpense(${e.id})"><i class="fas fa-edit"></i>Edit</button><button class="expense-btn delete" onclick="hapusExpense(${e.id})"><i class="fas fa-trash"></i></button></div>
             </div>`).join('');
@@ -462,10 +983,10 @@
                 html += `<tr>
                     <td style="text-align:center;">${no++}</td>
                     <td style="text-align:center;">${formatDateShort(e.date)}</td>
-                    <td style="text-align:left;">${v ? v.name : '-'}</td>
-                    <td style="text-align:center;">${v ? v.plate : '-'}</td>
-                    <td style="text-align:left;">${e.type}</td>
-                    <td style="text-align:left; word-break:break-word;">${deskripsi}</td>
+                    <td style="text-align:left;">${v ? escapeHtml(v.name) : '-'}</td>
+                    <td style="text-align:center;">${v ? escapeHtml(v.plate) : '-'}</td>
+                    <td style="text-align:left;">${escapeHtml(e.type)}</td>
+                    <td style="text-align:left; word-break:break-word;">${escapeHtml(deskripsi)}</td>
                     <td style="text-align:center;">${e.km || '-'}</td>
                     <td style="text-align:right; font-weight:600;">${formatRupiah(e.cost)}</td>
                 </tr>`;
@@ -508,356 +1029,11 @@
             showAlert('PDF berhasil diunduh', 'success');
         };
         
-        window.exportICSPrivate = function () {
-
-		  let vid = document.getElementById('reminderVehicle').value;
-		  if (!vid) { showAlert('Pilih kendaraan', 'warning'); return; }
-		
-		  let v = vehicles.find(v => v.id == vid);
-		
-		  let typeSel = document.getElementById('reminderType');
-		  let title = (typeSel.value === 'custom')
-		    ? document.getElementById('reminderCustomName').value
-		    : typeSel.options[typeSel.selectedIndex].text;
-		
-		  if (typeSel.value === 'custom' && !title) {
-		    showAlert('Isi nama pengingat', 'warning');
-		    return;
-		  }
-		
-		  let date = document.getElementById('reminderStartDate').value;
-		  if (!date) { showAlert('Pilih tanggal', 'warning'); return; }
-		
-		  // ===============================
-		  // FORMAT TANGGAL (LOCAL TIME - PALING AMAN)
-		  // ===============================
-		  let start = date.replace(/-/g, '') + 'T090000';
-		  let end = date.replace(/-/g, '') + 'T100000';
-		
-		  // ===============================
-		  // UID & TIMESTAMP (WAJIB)
-		  // ===============================
-		  let uid = Date.now() + "@akhira.app";
-		  let dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-		
-		  // ===============================
-		  // RECURRENCE
-		  // ===============================
-		  let rrule = '';
-		  let recurrenceLabel = '';
-		
-		  switch (typeSel.value) {
-		    case 'ganti_oli':
-		      rrule = 'FREQ=MONTHLY;INTERVAL=1';
-		      recurrenceLabel = 'Setiap 1 bulan';
-		      break;
-		    case 'service_rutin':
-		      rrule = 'FREQ=MONTHLY;INTERVAL=3';
-		      recurrenceLabel = 'Setiap 3 bulan';
-		      break;
-		    case 'pajak_tahunan':
-		      rrule = 'FREQ=YEARLY;INTERVAL=1';
-		      recurrenceLabel = 'Setiap 1 tahun';
-		      break;
-		    case 'pajak_5_tahun':
-		      rrule = 'FREQ=YEARLY;INTERVAL=5';
-		      recurrenceLabel = 'Setiap 5 tahun';
-		      break;
-		    default:
-		      recurrenceLabel = 'Tidak berulang';
-		  }
-		
-		  // ===============================
-		  // ESCAPE TEXT (WAJIB)
-		  // ===============================
-		  const escapeText = (text) =>
-		    text
-		      .replace(/\\/g, '\\\\')
-		      .replace(/\n/g, '\\n')
-		      .replace(/,/g, '\\,')
-		      .replace(/;/g, '\\;');
-		
-		  // ===============================
-		  // REMINDER (VALARM)
-		  // ===============================
-		  let alarms = '';
-		
-		  const addAlarm = (trigger, label) => {
-		    alarms +=
-		"BEGIN:VALARM\r\n" +
-		"TRIGGER:" + trigger + "\r\n" +
-		"ACTION:DISPLAY\r\n" +
-		"DESCRIPTION:" + label + "\r\n" +
-		"END:VALARM\r\n";
-		  };
-		
-		  if (document.getElementById('reminderH7').checked) addAlarm('-P7D', 'H-7');
-		  if (document.getElementById('reminderH3').checked) addAlarm('-P3D', 'H-3');
-		  if (document.getElementById('reminderH1').checked) addAlarm('-P1D', 'H-1');
-		  if (document.getElementById('reminderH0').checked) addAlarm('-PT0M', 'H-0');
-		
-		  // ===============================
-		  // DESCRIPTION
-		  // ===============================
-		  let description = escapeText(
-		    "Kendaraan: " + v.name + " (" + v.plate + ")\n" +
-		    "Jenis: " + title + "\n" +
-		    "Pengulangan: " + recurrenceLabel
-		  );
-		
-		  // ===============================
-		  // ICS CONTENT (CRLF + TANPA SPASI)
-		  // ===============================
-		  const nl = "\r\n";
-		
-		  let ics =
-		"BEGIN:VCALENDAR" + nl +
-		"VERSION:2.0" + nl +
-		"CALSCALE:GREGORIAN" + nl +
-		"BEGIN:VEVENT" + nl +
-		"UID:" + uid + nl +
-		"DTSTAMP:" + dtstamp + nl +
-		"SUMMARY:" + escapeText(title + " - " + v.name) + nl +
-		"DESCRIPTION:" + description + nl +
-		"DTSTART:" + start + nl +
-		"DTEND:" + end + nl +
-		(rrule ? "RRULE:" + rrule + nl : "") +
-		alarms +
-		"END:VEVENT" + nl +
-		"END:VCALENDAR";
-		
-		  // ===============================
-		  // DOWNLOAD (PALING KOMPATIBEL)
-		  // ===============================
-		  let blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-		  let url = URL.createObjectURL(blob);
-		
-		  let link = document.createElement('a');
-		  link.href = url;
-		  link.download = 'reminder.ics';
-		  document.body.appendChild(link);
-		  link.click();
-		  document.body.removeChild(link);
-		
-		  setTimeout(() => URL.revokeObjectURL(url), 5000);
-		
-		  // ===============================
-		  // UX INFO
-		  // ===============================
-		  showAlert('File kalender berhasil dibuat. Buka file lalu pilih Google Calendar.', 'success');
-		};
-
-		function renderReminderDropdown() {
-			let sel = document.getElementById('reminderVehicle');
-			sel.innerHTML = '<option value="">Pilih Kendaraan</option>' + vehicles.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
-		}
-
-		function renderReminderList() {
-			let list = document.getElementById('reminderList');
-			if(reminders.length === 0) { 
-				list.innerHTML = '<p class="text-center text-gray-400 py-4 text-sm">Belum ada pengingat tersimpan</p>'; 
-				return; 
-			}
-			
-			list.innerHTML = reminders.map(r => {
-				let v = vehicles.find(v => v.id === r.vehicle_id);
-				
-				// Tentukan teks recurrence
-				let recurrenceText = '';
-				let recurrenceDetail = '';
-				if(r.recurrence) {
-					if(r.recurrence.includes('MONTHLY;INTERVAL=1')) {
-						recurrenceText = '🔄 Setiap 1 bulan';
-						recurrenceDetail = 'Berulang setiap bulan - Tak Terhingga';
-					} else if(r.recurrence.includes('MONTHLY;INTERVAL=3')) {
-						recurrenceText = '🔄 Setiap 3 bulan';
-						recurrenceDetail = 'Berulang setiap 3 bulan - Tak Terhingga';
-					} else if(r.recurrence.includes('MONTHLY;INTERVAL=6')) {
-						recurrenceText = '🔄 Setiap 6 bulan';
-						recurrenceDetail = 'Berulang setiap 6 bulan - Tak Terhingga';
-					} else if(r.recurrence.includes('YEARLY;INTERVAL=1')) {
-						recurrenceText = '🔄 Setiap 1 tahun';
-						recurrenceDetail = 'Berulang setiap tahun - Tak Terhingga';
-					} else if(r.recurrence.includes('YEARLY;INTERVAL=5')) {
-						recurrenceText = '🔄 Setiap 5 tahun';
-						recurrenceDetail = 'Berulang setiap 5 tahun - Tak Terhingga';
-					}
-				} else {
-					recurrenceDetail = '⏰ Event satu kali (tidak berulang)';
-				}
-				
-				// Reminder aktif
-				let aktif = [];
-				if(r.h7) aktif.push('H-7');
-				if(r.h3) aktif.push('H-3');
-				if(r.h1) aktif.push('H-1');
-				if(r.h0) aktif.push('H-0');
-				let aktifText = aktif.length ? `⏰ ${aktif.join(', ')}` : '⏰ Tanpa pengingat';
-				
-				// Status jika sudah di-stop
-				let isStopped = r.stopped === true;
-				
-				return `<div class="bg-gray-50 p-3 rounded-lg ${isStopped ? 'opacity-60 bg-gray-100' : ''}" 
-							style="cursor:pointer; transition: all 0.2s;" 
-							onclick="detailReminder(${r.id})">
-					<div class="flex justify-between items-start">
-						<div class="flex-1">
-							<div class="flex items-center gap-2 flex-wrap">
-								<span class="font-semibold text-sm">${v ? v.name : '-'}</span>
-								<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">${r.typeLabel}</span>
-								${recurrenceText ? `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">${recurrenceText}</span>` : ''}
-								${isStopped ? `<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">⏹️ Dihentikan</span>` : ''}
-							</div>
-							<div class="text-xs text-gray-500 mt-1">
-								📅 Mulai: ${formatDateLong(r.startDate)} | ${aktifText}
-							</div>
-							<div class="text-xs text-gray-400 mt-0.5">
-								${recurrenceDetail}
-							</div>
-						</div>
-						<div class="flex gap-2">
-							<button onclick="event.stopPropagation(); bukaGoogleCalendarReminder(${r.id})" 
-									class="text-blue-500 hover:text-blue-700 p-1" title="Buka di Google Calendar">
-								<i class="fab fa-google"></i>
-							</button>
-							${!isStopped ? `
-							<button onclick="event.stopPropagation(); stopReminder(${r.id})" 
-									class="text-orange-500 hover:text-orange-700 p-1" title="Hentikan pengingat berulang">
-								<i class="fas fa-stop-circle"></i>
-							</button>
-							` : ''}
-							<button onclick="event.stopPropagation(); hapusReminder(${r.id})" 
-									class="text-red-500 hover:text-red-700 p-1" title="Hapus dari daftar">
-								<i class="fas fa-trash"></i>
-							</button>
-						</div>
-					</div>
-				</div>`;
-			}).join('');
-		}
-		
-		// Lihat detail reminder (modal popup)
-		window.detailReminder = function(id) {
-			let r = reminders.find(r => r.id === id);
-			if(!r) return;
-			
-			let v = vehicles.find(v => v.id === r.vehicle_id);
-			
-			// Tentukan teks recurrence
-			let recurrenceText = '';
-			if(r.recurrence) {
-				if(r.recurrence.includes('MONTHLY;INTERVAL=1')) recurrenceText = 'Setiap 1 bulan (Tak Terhingga)';
-				else if(r.recurrence.includes('MONTHLY;INTERVAL=3')) recurrenceText = 'Setiap 3 bulan (Tak Terhingga)';
-				else if(r.recurrence.includes('MONTHLY;INTERVAL=6')) recurrenceText = 'Setiap 6 bulan (Tak Terhingga)';
-				else if(r.recurrence.includes('YEARLY;INTERVAL=1')) recurrenceText = 'Setiap 1 tahun (Tak Terhingga)';
-				else if(r.recurrence.includes('YEARLY;INTERVAL=5')) recurrenceText = 'Setiap 5 tahun (Tak Terhingga)';
-			} else {
-				recurrenceText = 'Event satu kali (tidak berulang)';
-			}
-			
-			// Reminder aktif
-			let aktif = [];
-			if(r.h7) aktif.push('H-7');
-			if(r.h3) aktif.push('H-3');
-			if(r.h1) aktif.push('H-1');
-			if(r.h0) aktif.push('H-0');
-			
-			let isStopped = r.stopped === true;
-			
-			Swal.fire({
-				title: `${v ? v.name : '-'} - ${r.typeLabel}`,
-				html: `
-					<div style="text-align: left; font-size: 14px;">
-						<p><strong>📅 Tanggal Mulai:</strong> ${formatDateLong(r.startDate)}</p>
-						<p><strong>🔄 Pengulangan:</strong> ${recurrenceText}</p>
-						<p><strong>⏰ Pengingat:</strong> ${aktif.length ? aktif.join(', ') : 'Tidak ada'}</p>
-						<p><strong>📝 Status:</strong> ${isStopped ? '<span class="text-red-500">Dihentikan</span>' : '<span class="text-green-500">Aktif (Tak Terhingga)</span>'}</p>
-						<hr class="my-2">
-						<p class="text-gray-500 text-xs">💡 Event ini akan terus berulang sampai Anda menghentikannya atau menghapusnya dari Google Calendar.</p>
-					</div>
-				`,
-				icon: 'info',
-				confirmButtonText: 'Tutup',
-				showCancelButton: true,
-				cancelButtonText: 'Buka Google Calendar',
-				cancelButtonColor: '#4285f4'
-			}).then((result) => {
-				if(result.dismiss === Swal.DismissReason.cancel) {
-					bukaGoogleCalendarReminder(id);
-				}
-			});
-		};
-
-		// Buka event di Google Calendar (untuk edit)
-		window.bukaGoogleCalendarReminder = function(id) {
-			let r = reminders.find(r => r.id === id);
-			if(!r) return;
-			
-			let v = vehicles.find(v => v.id === r.vehicle_id);
-			let title = r.typeLabel + ' - ' + (v ? v.name : '');
-			let startDate = r.startDate.replace(/-/g, '') + 'T090000Z';
-			let endDate = r.startDate.replace(/-/g, '') + 'T100000Z';
-			let desc = `Kendaraan: ${v ? v.name : '-'} (${v ? v.plate : '-'})\nJenis: ${r.typeLabel}\n\nDibuat dari Aplikasi AKHIRA`;
-			
-			let calUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE`;
-			calUrl += `&text=${encodeURIComponent(title)}`;
-			calUrl += `&dates=${startDate}/${endDate}`;
-			calUrl += `&details=${encodeURIComponent(desc)}`;
-			
-			if(r.recurrence) {
-				calUrl += `&recurrence=${encodeURIComponent(r.recurrence)}`;
-			}
-			
-			window.open(calUrl, '_blank');
-			showAlert('Event dibuka di Google Calendar', 'success');
-		};
-
-		// STOP reminder (tandai sebagai dihentikan, tidak dihapus)
-		window.stopReminder = async function(id) {
-			let result = await Swal.fire({
-				title: 'Hentikan pengingat?',
-				text: 'Event yang sudah dibuat di Google Calendar tetap ada, tapi pengingat ini akan ditandai sebagai "Dihentikan" di aplikasi. Anda bisa menghapusnya nanti.',
-				icon: 'warning',
-				showCancelButton: true,
-				confirmButtonText: 'Ya, hentikan',
-				cancelButtonText: 'Batal',
-				confirmButtonColor: '#f59e0b'
-			});
-			
-			if(result.isConfirmed) {
-				let r = reminders.find(r => r.id === id);
-				if(r) {
-					r.stopped = true;
-					r.stoppedAt = new Date().toISOString();
-					localStorage.setItem('reminders', JSON.stringify(reminders));
-					renderReminderList();
-					showAlert('Pengingat telah dihentikan', 'success');
-				}
-			}
-		};
-
-		// Hapus reminder (hard delete)
-		window.hapusReminder = async function(id) {
-			let result = await Swal.fire({
-				title: 'Hapus pengingat?',
-				text: 'Data akan dihapus dari daftar. Event di Google Calendar tetap ada.',
-				icon: 'question',
-				showCancelButton: true,
-				confirmButtonText: 'Ya, hapus',
-				cancelButtonText: 'Batal'
-			});
-			
-			if(result.isConfirmed) {
-				reminders = reminders.filter(r => r.id !== id);
-				localStorage.setItem('reminders', JSON.stringify(reminders));
-				renderReminderList();
-				showAlert('Pengingat dihapus', 'success');
-			}
-		};        
-        
-        
         document.getElementById('reminderType').addEventListener('change', function() {
-            document.getElementById('reminderCustomName').classList.toggle('hidden', this.value !== 'custom');
+            let customInput = document.getElementById('reminderCustomName');
+            if(customInput) {
+                customInput.classList.toggle('hidden', this.value !== 'custom');
+            }
         });
         
         // CRUD Expenses
@@ -1018,7 +1194,10 @@
             document.getElementById('modalLaporan').style.display = 'flex';
         };
         
-        window.closeModal = function(id) { document.getElementById(id).style.display = 'none'; };
+        window.closeModal = function(id) { 
+            let modal = document.getElementById(id);
+            if(modal) modal.style.display = 'none'; 
+        };
         
         window.switchTab = function(tab) {
             document.getElementById('contentKendaraan').classList.add('hidden');
@@ -1032,7 +1211,11 @@
                 document.getElementById('contentReminder').classList.remove('hidden');
                 document.getElementById('tabReminder').classList.add('active');
                 renderReminderDropdown();
-                renderReminderList();
+                if(reminders.length === 0) {
+                    loadRemindersFromDatabase();
+                } else {
+                    renderReminderList();
+                }
             }
         };
         
@@ -1095,6 +1278,9 @@
             showLoading(true);
             await sb.auth.signOut();
             currentUser = null;
+            vehicles = [];
+            expenses = [];
+            reminders = [];
             document.getElementById('authContainer').classList.remove('hidden');
             document.getElementById('appContainer').classList.add('hidden');
             showLoading(false);
